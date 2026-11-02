@@ -1,16 +1,16 @@
--- Kleiner C++-Tokenizer. Kommentare werden übersprungen, Präprozessor-Zeilen
--- (inkl. Fortsetzungszeilen) werden zu einem einzigen "pp"-Token. Jedes Token
--- kennt seine Position (0-basiert, Ende exklusiv), damit Text aus dem Original
--- geschnitten und gezielt eingefügt werden kann.
+-- Small C++ tokenizer. Comments are skipped, preprocessor lines
+-- (including continuation lines) become a single "pp" token. Every token
+-- knows its position (0-based, end exclusive) so that text can be sliced from
+-- the original and inserted at specific points.
 local M = {}
 
 ---@class QtAssistToken
 ---@field t string   "id" | "num" | "str" | "punct" | "pp"
 ---@field s string   Text
----@field l integer  Startzeile (0-basiert)
----@field c integer  Startspalte (Byte, 0-basiert)
----@field el integer Endzeile
----@field ec integer Endspalte (exklusiv)
+---@field l integer  Start line (0-based)
+---@field c integer  Start column (byte, 0-based)
+---@field el integer End line
+---@field ec integer End column (exclusive)
 
 local multi = { "...", "::", "->", "&&", "||", "==", "!=", "++", "--", "+=", "-=", "*=", "/=", "|=", "&=", "^=", "%=" }
 
@@ -19,9 +19,9 @@ local multi = { "...", "::", "->", "&&", "||", "==", "!=", "++", "--", "+=", "-=
 function M.tokenize(lines)
   local toks = {}
   local nlines = #lines
-  local l, c = 1, 1 -- 1-basiert intern
+  local l, c = 1, 1 -- 1-based internally
   local in_block_comment = false
-  local line_start = true -- nur Leerraum seit Zeilenanfang?
+  local line_start = true -- only whitespace since the beginning of the line?
 
   local function push(t, s, sl, sc, el, ec)
     toks[#toks + 1] = { t = t, s = s, l = sl - 1, c = sc - 1, el = el - 1, ec = ec - 1 }
@@ -52,7 +52,7 @@ function M.tokenize(lines)
         in_block_comment = true
         c = c + 2
       elseif ch == "#" and line_start then
-        -- Präprozessor bis Zeilenende inkl. "\"-Fortsetzungen
+        -- Preprocessor up to end of line including "\" continuations
         local sl, sc = l, c
         local parts = { line:sub(c) }
         while lines[l]:match("\\%s*$") and l < nlines do
@@ -66,7 +66,7 @@ function M.tokenize(lines)
       else
         line_start = false
         local sl, sc = l, c
-        -- Rohstring R"delim( ... )delim"
+        -- Raw string R"delim( ... )delim"
         local raw_prefix = line:match('^[uUL8]*R"', c)
         if raw_prefix then
           local delim = line:match('^([^%(%s]*)%(', c + #raw_prefix) or ""
@@ -110,7 +110,7 @@ function M.tokenize(lines)
           push("id", s, sl, sc, l, c)
         elseif ch:match("%d") or (ch == "." and line:sub(c + 1, c + 1):match("%d")) then
           local s = line:match("^[%w_.']+", c)
-          -- Exponenten mit Vorzeichen (1e-5)
+          -- Exponents with sign (1e-5)
           local e = line:match("^[eEpP][+-][%d]+", c + #s - 1)
           c = c + #s
           push("num", s, sl, sc, l, c)
@@ -135,7 +135,7 @@ function M.tokenize(lines)
   return toks
 end
 
---- Text zwischen zwei Positionen aus den Zeilen schneiden
+--- Slice text between two positions from the lines
 ---@param lines string[]
 function M.slice(lines, sl, sc, el, ec)
   if sl == el then
@@ -149,7 +149,7 @@ function M.slice(lines, sl, sc, el, ec)
   return table.concat(out, "\n")
 end
 
---- Quelltext der Tokens i..j, Kommentare entfernt, Leerraum zusammengefasst
+--- Source text of tokens i..j, comments removed, whitespace collapsed
 ---@param toks QtAssistToken[]
 function M.text(lines, toks, i, j)
   if not i or not j or j < i then

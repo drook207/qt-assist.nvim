@@ -1,6 +1,6 @@
--- Zuordnung Header ↔ Quelldatei.
--- Reihenfolge: gleiches Verzeichnis → clangd (switchSourceHeader) →
--- compile_commands.json (cmake-tools / qmake-tools / Suche) → Suchpfade.
+-- Header ↔ source file mapping.
+-- Order: same directory → clangd (switchSourceHeader) →
+-- compile_commands.json (cmake-tools / qmake-tools / search) → search paths.
 local config = require("qt-assist.config")
 
 local M = {}
@@ -49,7 +49,7 @@ end
 
 local cc_cache = {} -- path → { mtime, files }
 
---- Build-Verzeichnis aus cmake-tools.nvim
+--- Build directory from cmake-tools.nvim
 local function cmake_tools_dir()
   local ok, cmake = pcall(require, "cmake-tools")
   if not ok or type(cmake.get_build_directory) ~= "function" then
@@ -71,7 +71,7 @@ local function cmake_tools_dir()
   return type(dir) == "string" and dir or nil
 end
 
---- Build-Verzeichnis aus qmake-tools.nvim
+--- Build directory from qmake-tools.nvim
 local function qmake_tools_dir()
   local ok, qt = pcall(require, "qmake-tools")
   if not ok then
@@ -94,7 +94,7 @@ local function qmake_tools_dir()
   return ok4 and dir or nil
 end
 
---- compile_commands-Verzeichnis aus der clangd-Kommandozeile
+--- compile_commands directory from the clangd command line
 local function clangd_dir(bufnr)
   local get = vim.lsp.get_clients or vim.lsp.get_active_clients
   for _, c in ipairs(get({ bufnr = bufnr, name = "clangd" })) do
@@ -115,7 +115,7 @@ local function clangd_dir(bufnr)
   end
 end
 
---- Alle Kandidaten für compile_commands.json zu einer Datei
+--- All candidates for compile_commands.json for a file
 function M.compile_commands_files(bufnr, file)
   local o = config.options.source
   local res, seen = {}, {}
@@ -139,7 +139,7 @@ function M.compile_commands_files(bufnr, file)
   add(cmake_tools_dir())
   add(qmake_tools_dir())
   add(clangd_dir(bufnr))
-  -- Aufwärts suchen, auch in build*/
+  -- Search upwards, also in build*/
   for d in vim.fs.parents(file) do
     add(d)
     local handle = uv.fs_scandir(d)
@@ -161,7 +161,7 @@ function M.compile_commands_files(bufnr, file)
   return res
 end
 
---- Dateiliste einer compile_commands.json (gecacht nach mtime)
+--- File list of a compile_commands.json (cached by mtime)
 function M.compile_commands_entries(path)
   local st = uv.fs_stat(path)
   if not st then
@@ -207,7 +207,7 @@ local function common_prefix_len(a, b)
   return n
 end
 
---- Bester Kandidat nach Pfadnähe
+--- Best candidate by path proximity
 local function closest(file, candidates)
   local best, best_n
   for _, c in ipairs(candidates) do
@@ -220,7 +220,7 @@ local function closest(file, candidates)
 end
 
 -- ---------------------------------------------------------------------------
--- Gegenstück finden
+-- Find the counterpart
 -- ---------------------------------------------------------------------------
 
 local function same_dir_candidate(file, exts)
@@ -254,14 +254,14 @@ local function clangd_switch(bufnr)
   end
 end
 
---- Quelldatei zu einem Header finden
+--- Find the source file for a header
 ---@return string|nil path, string|nil how
 function M.find_source(bufnr)
   local file = normalize(vim.api.nvim_buf_get_name(bufnr))
   local o = config.options.source
   local s = same_dir_candidate(file, o.extensions)
   if s then
-    return s, "gleiches Verzeichnis"
+    return s, "same directory"
   end
   local sw = clangd_switch(bufnr)
   if sw and M.is_source(sw) then
@@ -287,7 +287,7 @@ function M.find_source(bufnr)
     for _, e in ipairs(o.extensions) do
       local p = vim.fs.joinpath(dir, d, name .. "." .. e)
       if exists(p) then
-        return normalize(p), "Suchpfad"
+        return normalize(p), "search path"
       end
     end
   end
@@ -304,8 +304,8 @@ function M.find_source(bufnr)
   end
 end
 
---- Header zu einer Quelldatei finden (für "Deklaration hinzufügen")
----@param parsed table|nil Parse-Ergebnis der Quelle (für #include-Liste)
+--- Find the header for a source file (for "add declaration")
+---@param parsed table|nil Parse result of the source (for the #include list)
 function M.find_header(bufnr, parsed)
   local file = normalize(vim.api.nvim_buf_get_name(bufnr))
   local o = config.options.source
@@ -328,7 +328,7 @@ function M.find_header(bufnr, parsed)
             return normalize(p)
           end
         end
-        -- Include-Pfade aus compile_commands sind aufwendig; Suche im Projekt
+        -- Include paths from compile_commands are expensive; search the project
         local found = vim.fs.find(vim.fs.basename(inc.path), {
           path = vim.fs.root(file, { ".git", "CMakeLists.txt" }) or dir,
           type = "file",
@@ -350,12 +350,12 @@ function M.find_header(bufnr, parsed)
   end
 end
 
---- Vorschlag für eine neu anzulegende Quelldatei
+--- Proposal for a new source file to create
 function M.default_source_path(header)
   return vim.fn.fnamemodify(header, ":r") .. "." .. config.options.source.extensions[1]
 end
 
---- Include-Zeile für den Header aus Sicht der Quelle
+--- Include line for the header from the source's point of view
 function M.include_for(header, source)
   local hdir = vim.fs.dirname(header)
   local sdir = vim.fs.dirname(source)

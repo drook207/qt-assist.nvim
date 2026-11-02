@@ -1,12 +1,12 @@
--- Gesammelte Textänderungen über mehrere Buffer, rückwärts angewendet, damit
--- sich Positionen nicht gegenseitig verschieben.
+-- Collected text changes across multiple buffers, applied backwards so that
+-- positions do not shift relative to each other.
 local config = require("qt-assist.config")
 
 local M = {}
 
 local uv = vim.uv or vim.loop
 
---- Buffer zu einer Datei laden (legt ihn bei Bedarf an)
+--- Load a buffer for a file (creating it if needed)
 function M.load(path)
   local buf = vim.fn.bufadd(path)
   if not vim.api.nvim_buf_is_loaded(buf) then
@@ -20,7 +20,7 @@ function M.lines(buf)
   return vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 end
 
---- Inhalt einer Datei: aus dem Buffer, falls geladen, sonst von der Platte
+--- Contents of a file: from the buffer if loaded, otherwise from disk
 function M.file_lines(path)
   local buf = vim.fn.bufnr(path)
   if buf ~= -1 and vim.api.nvim_buf_is_loaded(buf) then
@@ -32,7 +32,7 @@ function M.file_lines(path)
   return {}, nil
 end
 
---- Einrückungseinheit eines Buffers/einer Datei ermitteln
+--- Determine the indentation unit of a buffer/file
 function M.indent_unit(buf, lines)
   local o = config.options.indent
   if type(o) == "number" then
@@ -48,7 +48,7 @@ function M.indent_unit(buf, lines)
     if ws then
       if ws:find("\t") then
         tabs = tabs + 1
-      elseif not l:match("^%s+%*") then -- Kommentar-Fortsetzungen ignorieren
+      elseif not l:match("^%s+%*") then -- ignore comment continuations
         local n = #ws
         counts[n] = (counts[n] or 0) + 1
         if n >= 2 and (not min_spaces or n < min_spaces) then
@@ -100,12 +100,12 @@ function Batch:_add(buf, e)
   table.insert(self.edits[buf], e)
 end
 
---- Zeilen vor Zeile `row` (0-basiert) einfügen; row = Zeilenanzahl → anhängen
+--- Insert lines before line `row` (0-based); row = line count → append
 function Batch:insert_lines(buf, row, lines)
   self:_add(buf, { row = row, col = 0, end_row = row, end_col = 0, lines = lines, kind = "lines" })
 end
 
---- Text ersetzen (0-basiert, Ende exklusiv)
+--- Replace text (0-based, end exclusive)
 function Batch:replace(buf, sr, sc, er, ec, lines)
   self:_add(buf, { row = sr, col = sc, end_row = er, end_col = ec, lines = lines, kind = "text" })
 end
@@ -114,7 +114,7 @@ function Batch:empty()
   return #self.order == 0
 end
 
---- Anwenden. Gibt die Positionen (Buffer, Zeile) der ersten Einfügung je Buffer zurück.
+--- Apply. Returns the positions (buffer, line) of the first insertion per buffer.
 function Batch:apply()
   local first = {}
   for _, buf in ipairs(self.order) do
@@ -129,7 +129,7 @@ function Batch:apply()
       return a.seq > b.seq
     end)
     local count = vim.api.nvim_buf_line_count(buf)
-    -- leerer Buffer: eine leere Zeile
+    -- empty buffer: one empty line
     local empty = count == 1 and vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1] == ""
     for _, e in ipairs(list) do
       if e.kind == "lines" then
@@ -147,7 +147,7 @@ function Batch:apply()
         vim.api.nvim_buf_set_text(buf, e.row, e.col, e.end_row, e.end_col, e.lines)
       end
     end
-    -- erste (kleinste) Zeile merken
+    -- remember the first (smallest) line
     local minrow
     for _, e in ipairs(list) do
       if not minrow or e.row < minrow then

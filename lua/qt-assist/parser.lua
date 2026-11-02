@@ -1,11 +1,11 @@
--- Strukturparser für C++-Header und -Quellen auf Basis des Tokenizers.
--- Absichtlich fehlertolerant und Qt-bewusst (Q_OBJECT, signals:, public slots:,
--- Q_PROPERTY(...), Q_INVOKABLE, ...). Kein vollständiger C++-Parser – er erkennt
--- genau das, was für die Code-Generierung gebraucht wird:
---   * Namespaces (inkl. a::b, inline, anonym) mit Klammer-Positionen
---   * Klassen/Structs (verschachtelt) mit Abschnitten und Membern
---   * Funktionsdeklarationen und -definitionen (auch Out-of-Class: Foo::bar())
---   * Membervariablen, Q_PROPERTY-Makros, verschachtelte Typnamen
+-- Structure parser for C++ headers and sources built on the tokenizer.
+-- Intentionally error-tolerant and Qt-aware (Q_OBJECT, signals:, public slots:,
+-- Q_PROPERTY(...), Q_INVOKABLE, ...). Not a complete C++ parser – it recognizes
+-- exactly what is needed for code generation:
+--   * namespaces (including a::b, inline, anonymous) with brace positions
+--   * classes/structs (nested) with sections and members
+--   * function declarations and definitions (also out-of-class: Foo::bar())
+--   * member variables, Q_PROPERTY macros, nested type names
 --   * using namespace / #include
 local lexer = require("qt-assist.lexer")
 
@@ -36,14 +36,14 @@ end
 ---@class QtAssistParsed
 ---@field lines string[]
 ---@field toks QtAssistToken[]
----@field root table   Datei-Scope
----@field classes table[] alle Klassen (flach)
----@field functions table[] alle Funktionen (flach, Deklarationen + Definitionen)
----@field namespaces table[] alle Namespace-Blöcke (flach)
----@field usings string[][] using-namespace-Direktiven (Dateiebene, als Pfad)
+---@field root table   File scope
+---@field classes table[] all classes (flat)
+---@field functions table[] all functions (flat, declarations + definitions)
+---@field namespaces table[] all namespace blocks (flat)
+---@field usings string[][] using-namespace directives (file level, as a path)
 ---@field includes table[] {path=, line=}
 
---- Index des passenden schließenden Tokens (für ( [ {)
+--- Index of the matching closing token (for ( [ {)
 local pairs_close = { ["("] = ")", ["["] = "]", ["{"] = "}" }
 local function match_close(toks, i)
   local open = toks[i].s
@@ -66,7 +66,7 @@ local function match_close(toks, i)
 end
 M.match_close = match_close
 
---- Zu "<" passendes ">" (Template-Argumente), nil falls keins gefunden
+--- ">" matching "<" (template arguments), nil if none is found
 local function match_angle(toks, i, limit)
   local depth = 0
   local k = i
@@ -95,10 +95,10 @@ local function text(p, i, j)
 end
 
 -- ---------------------------------------------------------------------------
--- Analyse einer einzelnen Deklaration (Tokens a..b, ohne ; oder Rumpf)
+-- Analysis of a single declaration (tokens a..b, without ; or body)
 -- ---------------------------------------------------------------------------
 
---- Parameterliste (Tokens zwischen den Klammern) zerlegen
+--- Split a parameter list (tokens between the parentheses)
 local function parse_params(p, a, b)
   local toks = p.toks
   local params = {}
@@ -111,7 +111,7 @@ local function parse_params(p, a, b)
     if e < start then
       return
     end
-    -- Default-Wert abtrennen (erstes "=" auf oberster Ebene)
+    -- Separate the default value (first "=" at the top level)
     local eq
     local m = start
     while m <= e do
@@ -133,7 +133,7 @@ local function parse_params(p, a, b)
     if full == "void" and a == start and e == b then
       return
     end
-    -- Parametername: letzter Bezeichner, wenn davor noch Typ-Tokens stehen
+    -- Parameter name: last identifier if there are still type tokens before it
     local name, type_end = nil, decl_end
     local last = toks[decl_end]
     local arr_suffix = ""
@@ -156,10 +156,10 @@ local function parse_params(p, a, b)
     end
     local typ = text(p, start, type_end) .. (name and "" or arr_suffix)
     if name and arr_suffix ~= "" then
-      typ = typ .. arr_suffix -- nur für Vergleich
+      typ = typ .. arr_suffix -- for comparison only
     end
     params[#params + 1] = {
-      text = full, -- ohne Default
+      text = full, -- without default
       type = typ,
       name = name,
       default = eq and text(p, eq + 1, e) or nil,
@@ -184,17 +184,17 @@ local function parse_params(p, a, b)
   return params
 end
 
---- Normalisierter Typ für Signaturvergleiche
+--- Normalized type for signature comparisons
 function M.normalize_type(s)
   s = s:gsub("%s*([%*&,<>%(%)%[%]])%s*", "%1")
   s = s:gsub("%s+", " ")
-  -- "const T" == "T const" wird nicht normalisiert, aber Top-Level-const bei
-  -- Wertparametern ist für die Signatur irrelevant
+  -- "const T" == "T const" is not normalized, but top-level const on
+  -- value parameters is irrelevant for the signature
   s = s:gsub("^const ([%w_:<>, ]+)$", "%1")
   return vim.trim(s)
 end
 
---- Erkennt Funktion oder Variable in den Tokens a..b
+--- Recognizes a function or variable in tokens a..b
 ---@return table|nil
 local function analyze_decl(p, a, b)
   local toks = p.toks
@@ -206,7 +206,7 @@ local function analyze_decl(p, a, b)
       or first == "namespace" then
     return nil
   end
-  -- template<...> Präfix
+  -- template<...> prefix
   local template
   if first == "template" and toks[a + 1] and toks[a + 1].s == "<" then
     local close = match_angle(toks, a + 1, b)
@@ -219,7 +219,7 @@ local function analyze_decl(p, a, b)
       return nil
     end
   end
-  -- [[attribute]] überspringen
+  -- skip [[attribute]]
   local attrs = {}
   while toks[a] and toks[a].s == "[" and toks[a + 1] and toks[a + 1].s == "[" do
     local close = match_close(toks, a)
@@ -227,7 +227,7 @@ local function analyze_decl(p, a, b)
     a = close + 1
   end
 
-  -- Erste Klammer auf oberster Ebene (Templates und Initialisierer beachten)
+  -- First parenthesis at the top level (taking templates and initializers into account)
   local k = a
   local paren
   local eq
@@ -236,7 +236,7 @@ local function analyze_decl(p, a, b)
     local tk = toks[k]
     local s = tk.s
     if s == "operator" and tk.t == "id" and not eq and not paren then
-      -- Operatorname bis zur Parameterliste überspringen: operator==, operator(), operator bool
+      -- Skip the operator name up to the parameter list: operator==, operator(), operator bool
       local m = k + 1
       if toks[m] and toks[m].s == "(" and toks[m + 1] and toks[m + 1].s == ")" then
         m = m + 2
@@ -263,7 +263,7 @@ local function analyze_decl(p, a, b)
             -- operator()(...)
             k = match_close(toks, k)
           elseif toks[k + 1] and (toks[k + 1].s == "*" or toks[k + 1].s == "&") and prev.t ~= "id" then
-            return nil -- Funktionszeiger, nicht unterstützt
+            return nil -- function pointer, not supported
           else
             paren = k
             k = match_close(toks, k)
@@ -292,10 +292,10 @@ local function analyze_decl(p, a, b)
   local res = { template = template, attrs = attrs, first = a, last = b }
 
   if paren and (not eq or eq > paren) and (not brace_init or brace_init > paren) then
-    -- Funktion
+    -- Function
     local pclose = match_close(toks, paren)
     local name_end = paren - 1
-    -- Name rückwärts einsammeln: id, ~id, operator xx, Qualifizierer a::b::
+    -- Collect the name backwards: id, ~id, operator xx, qualifier a::b::
     local name_start = name_end
     local op_idx
     for m = name_end, a, -1 do
@@ -304,7 +304,7 @@ local function analyze_decl(p, a, b)
         break
       end
       if toks[m].t ~= "punct" or toks[m].s == "(" or toks[m].s == ";" then
-        -- weiter unten
+        -- further below
       end
       if m < name_end - 4 then
         break
@@ -314,7 +314,7 @@ local function analyze_decl(p, a, b)
       name_start = op_idx
     else
       if toks[name_end].s == ">" then
-        -- Spezialisierung foo<int>(): Templateargumente zurücklaufen
+        -- Specialization foo<int>(): walk back over template arguments
         local depth = 0
         for m = name_end, a, -1 do
           if toks[m].s == ">" then
@@ -335,7 +335,7 @@ local function analyze_decl(p, a, b)
         name_start = name_start - 1
       end
     end
-    -- Qualifizierer davor: X::  X<T>::
+    -- Qualifier before it: X::  X<T>::
     local q_start = name_start
     while toks[q_start - 1] and toks[q_start - 1].s == "::" and q_start - 2 >= a do
       local m = q_start - 2
@@ -375,7 +375,7 @@ local function analyze_decl(p, a, b)
         end
       end
     end
-    -- Rückgabetyp und Spezifizierer
+    -- Return type and specifiers
     local specs = {}
     local ret_start
     for m = a, q_start - 1 do
@@ -384,13 +384,13 @@ local function analyze_decl(p, a, b)
         specs[s] = true
       elseif toks[m].t == "id" and is_macro_name(s) and not ret_start and m < q_start - 1
           and toks[m + 1].t == "id" and s:match("^Q_") then
-        specs[s] = true -- Q_REQUIRED_RESULT, Q_DECL_... usw.
+        specs[s] = true -- Q_REQUIRED_RESULT, Q_DECL_... etc.
       else
         ret_start = ret_start or m
       end
     end
     local ret = ret_start and text(p, ret_start, q_start - 1) or ""
-    -- Nach den Parametern
+    -- After the parameters
     local trailing = {}
     local m = pclose + 1
     local pure, defaulted, deleted, trailing_ret
@@ -429,7 +429,7 @@ local function analyze_decl(p, a, b)
         end
         m = m + 1
       elseif s == ":" then
-        break -- Konstruktor-Initialisierungsliste (bei Definitionen)
+        break -- constructor initializer list (for definitions)
       elseif s == "[" and toks[m + 1] and toks[m + 1].s == "[" then
         m = match_close(toks, m)
       end
@@ -447,7 +447,7 @@ local function analyze_decl(p, a, b)
     res.trailing_ret = trailing_ret
     res.is_const = vim.tbl_contains(trailing, "const")
     res.pure, res.defaulted, res.deleted = pure, defaulted, deleted
-    res.is_ctor_like = ret == "" -- Konstruktor/Destruktor/Konvertierung
+    res.is_ctor_like = ret == "" -- constructor/destructor/conversion
     res.name_tok = name_start
     res.paren_close = pclose
     return res
@@ -462,7 +462,7 @@ local function analyze_decl(p, a, b)
     while m > a and toks[m].s ~= "[" do
       m = m - 1
     end
-    -- mehrere Dimensionen
+    -- multiple dimensions
     while toks[m - 1] and toks[m - 1].s == "]" do
       m = m - 1
       while m > a and toks[m].s ~= "[" do
@@ -479,7 +479,7 @@ local function analyze_decl(p, a, b)
   if builtin_type_words[nt.s] then
     return nil
   end
-  -- mehrere Deklaratoren (int a, b;) → nur einfache Fälle
+  -- multiple declarators (int a, b;) → simple cases only
   for m = a, name_end do
     if toks[m].s == "," then
       local depth_ok = true
@@ -511,7 +511,7 @@ end
 M.analyze_decl = analyze_decl
 
 -- ---------------------------------------------------------------------------
--- Scope-Parser
+-- Scope parser
 -- ---------------------------------------------------------------------------
 
 ---@param lines string[]
@@ -543,7 +543,7 @@ function M.parse(lines)
 
   local parse_scope -- forward
 
-  --- Klassenkopf erkennen: (template<..>)? class|struct|union [attr] [macro] Name [final] [: bases] {
+  --- Recognize a class head: (template<..>)? class|struct|union [attr] [macro] Name [final] [: bases] {
   local function class_head(a, brace)
     local k = a
     local template
@@ -559,7 +559,7 @@ function M.parse(lines)
     if key ~= "class" and key ~= "struct" and key ~= "union" then
       return nil
     end
-    -- Name: letzter Bezeichner vor ":" / "final" / "{" (Export-Makros überspringen)
+    -- Name: last identifier before ":" / "final" / "{" (skip export macros)
     local name, name_tok
     local m = k + 1
     while m < brace do
@@ -571,7 +571,7 @@ function M.parse(lines)
         m = match_close(toks, m)
       elseif toks[m].t == "id" and s ~= "final" and s ~= "alignas" then
         if toks[m + 1] and toks[m + 1].s == "(" then
-          m = match_close(toks, m + 1) -- Makro mit Argumenten
+          m = match_close(toks, m + 1) -- macro with arguments
         else
           name, name_tok = s, m
         end
@@ -583,7 +583,7 @@ function M.parse(lines)
     return { key = key, name = name or "", name_tok = name_tok, template = template, head_start = a }
   end
 
-  --- Qt-Abschnitte und Makros innerhalb einer Klasse am Statement-Anfang
+  --- Qt sections and macros inside a class at the start of a statement
   ---@return integer|nil next, table|nil section
   local function try_section(k)
     local s = toks[k].s
@@ -602,7 +602,7 @@ function M.parse(lines)
     end
   end
 
-  --- Allein stehende Makros (Q_OBJECT, Q_PROPERTY(...), Q_DISABLE_COPY(X), ...)
+  --- Standalone macros (Q_OBJECT, Q_PROPERTY(...), Q_DISABLE_COPY(X), ...)
   local function try_macro(k, limit)
     local tk = toks[k]
     if tk.t ~= "id" or not is_macro_name(tk.s) then
@@ -621,19 +621,19 @@ function M.parse(lines)
     end
   end
 
-  --- Funktionsrumpf-Ende ab Token k (nach den Parametern): überspringt
-  --- Initialisierungsliste, liefert Index der öffnenden Rumpfklammer
+  --- End of a function body from token k (after the parameters): skips the
+  --- initializer list and returns the index of the opening body brace
   local function find_body_open(k, limit)
     local m = k
     while m <= limit do
       local s = toks[m].s
       if s == "{" then
         local prev = toks[m - 1]
-        -- Initialisierer a{1} innerhalb einer Initialisierungsliste
+        -- Initializer a{1} inside an initializer list
         if prev and (prev.t == "id" or prev.s == ">") and prev.s ~= "const" and prev.s ~= "override"
             and prev.s ~= "final" and prev.s ~= "noexcept" and prev.s ~= "volatile" and prev.s ~= "mutable"
             and prev.s ~= "try" then
-          -- nur wenn wir in einer Initialisierungsliste sind
+          -- only if we are in an initializer list
           local in_init = false
           for q = k, m - 1 do
             if toks[q].s == ":" then
@@ -658,7 +658,7 @@ function M.parse(lines)
     end
   end
 
-  --- Parsen eines Bereichs [k, limit] im Kontext scope
+  --- Parse a region [k, limit] in the context scope
   ---@param scope table
   local function record_last(cls, k)
     if k - 1 >= cls.open and toks[k - 1] then
@@ -678,7 +678,7 @@ function M.parse(lines)
     while k <= limit do
       local tk = toks[k]
       local s = tk.s
-      -- letzte belegte Zeile des aktuellen Abschnitts (Einfügepunkt)
+      -- last used line of the current section (insertion point)
       if cls and not stmt_start then
         record_last(cls, k)
       end
@@ -717,7 +717,7 @@ function M.parse(lines)
           end
           m = m + 1
         end
-        -- Attribute / Makros
+        -- Attribute / macros
         while toks[m] and toks[m].s ~= "{" and toks[m].s ~= "=" and toks[m].s ~= ";" do
           m = m + 1
         end
@@ -725,7 +725,7 @@ function M.parse(lines)
           local close = match_close(toks, m)
           local path = vim.list_extend(vim.deepcopy(scope.ns), names)
           if #names == 0 then
-            path[#path + 1] = "" -- anonym
+            path[#path + 1] = "" -- anonymous
           end
           local ns = {
             kind = "namespace", names = names, ns = path, open = m, close = close,
@@ -737,7 +737,7 @@ function M.parse(lines)
           parse_scope(ns, m + 1, close - 1)
           k = close + 1
         else
-          -- namespace Alias
+          -- namespace alias
           while k <= limit and toks[k].s ~= ";" do
             k = k + 1
           end
@@ -746,7 +746,7 @@ function M.parse(lines)
       else
         stmt_start = stmt_start or k
         if s == ";" then
-          -- Deklaration fertig
+          -- declaration finished
           local a, b = stmt_start, k - 1
           if toks[a].s == "using" and toks[a + 1] and toks[a + 1].s == "namespace" then
             local path = {}
@@ -755,13 +755,13 @@ function M.parse(lines)
                 path[#path + 1] = toks[m].s
               end
             end
-            -- relativ zum aktuellen Namespace? (vereinfachend: absolut)
+            -- relative to the current namespace? (simplified: absolute)
             scope.usings[#scope.usings + 1] = path
             if scope.kind == "file" then
               p.usings[#p.usings + 1] = path
             end
           elseif cls and (toks[a].s == "using" or toks[a].s == "typedef") then
-            -- Typalias in Klasse: Name merken
+            -- Type alias in class: remember the name
             local alias
             if toks[a].s == "using" and toks[a + 2] and toks[a + 2].s == "=" then
               alias = toks[a + 1].s
@@ -772,7 +772,7 @@ function M.parse(lines)
               cls.nested_types[alias] = true
             end
           elseif (toks[a].s == "class" or toks[a].s == "struct" or toks[a].s == "enum") and b - a <= 2 and cls then
-            -- Vorwärtsdeklaration
+            -- forward declaration
             if toks[b].t == "id" then
               cls.nested_types[toks[b].s] = true
             end
@@ -814,7 +814,7 @@ function M.parse(lines)
               sections = {}, members = {}, fields = {}, functions = {}, properties = {}, macros = {},
               classes = {}, namespaces = {}, usings = {}, nested_types = {},
             }
-            -- Default-Zugriff
+            -- Default access
             cscope.default_access = head.key == "class" and "private" or "public"
             cscope.chain = {}
             if cls then
@@ -826,7 +826,7 @@ function M.parse(lines)
             scope.classes[#scope.classes + 1] = cscope
             p.classes[#p.classes + 1] = cscope
             parse_scope(cscope, k + 1, close - 1)
-            -- bis zum ; nach der Klasse
+            -- up to the ; after the class
             local m = close + 1
             while m <= limit and toks[m].s ~= ";" do
               m = m + 1
@@ -857,16 +857,16 @@ function M.parse(lines)
             stmt_start = nil
             k = k + 1
           else
-            -- Funktion mit Rumpf oder Initialisierer
+            -- function with body or initializer
             local d = analyze_decl(p, a, k - 1)
             local body_open = k
             if d and d.kind == "function" then
-              -- Initialisierungsliste: Rumpf weiter hinten
+              -- Initializer list: body further ahead
               local bo = find_body_open(d.paren_close + 1, limit)
               body_open = bo or k
               if bo and bo ~= k then
                 d = analyze_decl(p, a, d.paren_close) or d
-                -- trailing Qualifizierer vor ":" neu einlesen
+                -- Re-read trailing qualifiers before ":"
                 local d2 = analyze_decl(p, a, bo - 1)
                 if d2 and d2.kind == "function" then
                   d = d2
@@ -891,12 +891,12 @@ function M.parse(lines)
               end
               stmt_start = nil
               k = close + 1
-              -- optionales ; nach Inline-Definition
+              -- optional ; after an inline definition
               if toks[k] and toks[k].s == ";" and k <= limit then
                 k = k + 1
               end
             else
-              -- Klammer-Initialisierer: überspringen, Statement läuft weiter
+              -- Brace initializer: skip it, the statement continues
               k = match_close(toks, k) + 1
             end
           end
@@ -921,10 +921,10 @@ function M.parse(lines)
 end
 
 -- ---------------------------------------------------------------------------
--- Hilfsfunktionen
+-- Helpers
 -- ---------------------------------------------------------------------------
 
---- Innerste Klasse, deren Rumpf die Zeile enthält
+--- Innermost class whose body contains the line
 function M.class_at(p, line)
   local best
   for _, c in ipairs(p.classes) do
@@ -937,7 +937,7 @@ function M.class_at(p, line)
   return best
 end
 
---- Member (Funktion/Variable/Property-Makro) an einer Zeile bzw. in einem Bereich
+--- Member (function/variable/property macro) at a line or in a range
 function M.members_in(cls, l1, l2)
   local res = {}
   for _, m in ipairs(cls.members) do
@@ -958,7 +958,7 @@ function M.properties_in(cls, l1, l2)
   return res
 end
 
---- Funktion außerhalb von Klassen (z. B. Foo::bar() { } in der .cpp) an Zeile
+--- Function outside classes (e.g. Foo::bar() { } in the .cpp) at a line
 function M.function_at(p, line)
   local best
   for _, f in ipairs(p.functions) do
@@ -971,10 +971,10 @@ function M.function_at(p, line)
   return best
 end
 
---- Q_PROPERTY-Argumente zerlegen
+--- Split Q_PROPERTY arguments
 function M.parse_property(args)
   local words = {}
-  -- Typ kann Templates enthalten: alles bis zum Namen vor dem ersten Schlüsselwort
+  -- The type may contain templates: everything up to the name before the first keyword
   local keywords = {
     READ = true, WRITE = true, NOTIFY = true, RESET = true, MEMBER = true, CONSTANT = true,
     FINAL = true, DESIGNABLE = true, SCRIPTABLE = true, STORED = true, USER = true,
@@ -992,7 +992,7 @@ function M.parse_property(args)
   end
   local name = words[kw_start - 1]
   local typ = table.concat(vim.list_slice(words, 1, kw_start - 2), " ")
-  -- "QString*name" / "const T &name" Sonderfälle
+  -- "QString*name" / "const T &name" special cases
   if name and name:match("^[%*&]") then
     typ = typ .. " " .. name:match("^[%*&]+")
     name = name:gsub("^[%*&]+", "")
@@ -1015,7 +1015,7 @@ function M.parse_property(args)
   return res
 end
 
---- Signatur-Schlüssel für Vergleiche Deklaration ↔ Definition
+--- Signature key for comparing declaration ↔ definition
 function M.signature_key(f)
   local types = {}
   for _, prm in ipairs(f.params) do

@@ -1,4 +1,4 @@
--- Namensbildung nach konfigurierbaren Mustern
+-- Name generation based on configurable patterns
 local config = require("qt-assist.config")
 
 local M = {}
@@ -16,7 +16,7 @@ local function snake(s)
   return (s:gsub("(%l)(%u)", "%1_%2"):lower())
 end
 
---- Basisname aus einem Membernamen (mIsValid → isValid, m_ratio → ratio, count_ → count)
+--- Base name from a member name (mIsValid → isValid, m_ratio → ratio, count_ → count)
 function M.base_name(member)
   local o = config.options.naming
   local name = member
@@ -24,7 +24,7 @@ function M.base_name(member)
     if pre ~= "" and name:sub(1, #pre) == pre and #name > #pre then
       local rest = name:sub(#pre + 1)
       if pre:match("[%a%d]$") then
-        -- Buchstaben-Präfix nur vor Großbuchstaben (mFoo, nicht mode)
+        -- letter prefix only before uppercase letters (mFoo, not mode)
         if rest:match("^%u") then
           name = lower_first(rest)
           break
@@ -44,7 +44,7 @@ function M.base_name(member)
   return name
 end
 
---- Platzhalter in einer Vorlage ersetzen; unbekannte {..} bleiben stehen
+--- Replace placeholders in a template; unknown {..} are left as-is
 function M.expand(tpl, ctx)
   if type(tpl) == "function" then
     return tpl(ctx)
@@ -58,11 +58,11 @@ function M.expand(tpl, ctx)
   end))
 end
 
---- Kontext mit allen Namen für eine Membervariable
----@param member string Name der Membervariable
----@param typ string Typ
+--- Context with all names for a member variable
+---@param member string Name of the member variable
+---@param typ string Type
 ---@param class_name string|nil
----@param base string|nil Basisname vorgeben (z. B. aus Q_PROPERTY)
+---@param base string|nil Override the base name (e.g. from Q_PROPERTY)
 function M.context(member, typ, class_name, base)
   local o = config.options.naming
   local name = base or M.base_name(member)
@@ -79,7 +79,7 @@ function M.context(member, typ, class_name, base)
   local getter_tpl = (is_bool and o.bool_getter) or o.getter
   ctx.getter = M.expand(getter_tpl, ctx)
   if ctx.getter == member then
-    -- Member ohne Präfix: Getter darf nicht wie die Variable heißen
+    -- Member without a prefix: the getter must not have the same name as the variable
     ctx.getter = "get" .. ctx.Name
   end
   ctx.setter = M.expand(o.setter, ctx)
@@ -98,7 +98,7 @@ function M.context(member, typ, class_name, base)
   return ctx
 end
 
---- Typ ohne Namespaces/Template-Argumente/const/&/*
+--- Type without namespaces/template arguments/const/&/*
 local function core_type(t)
   t = t:gsub("<.*>", "")
   t = t:gsub("%f[%w_]const%f[^%w_]", ""):gsub("%f[%w_]volatile%f[^%w_]", "")
@@ -106,15 +106,15 @@ local function core_type(t)
   return vim.trim(t:gsub("[%*&]", ""))
 end
 
---- Soll der Typ als Wert (statt const-Referenz) übergeben werden?
----@param nested table<string, boolean>|nil Enums/Typen der Klasse
+--- Should the type be passed by value (instead of const reference)?
+---@param nested table<string, boolean>|nil Enums/types of the class
 function M.is_value_type(t, nested)
   if t:match("[%*&]%s*$") or t:match("%*") then
     return true
   end
   local core = core_type(t)
   if nested and nested[core] then
-    return true -- (Enum der Klasse – verschachtelte Klassen sind seltener)
+    return true -- (class enum – nested classes are rarer)
   end
   if core:match("^Q?[%w_]*Enum") or core:match("Flags?$") then
     return true
@@ -135,7 +135,7 @@ function M.is_float(t)
   return core == "float" or core == "double" or core == "qreal" or core == "long double"
 end
 
---- Parametertyp für den Setter
+--- Parameter type for the setter
 function M.param_type(t, nested)
   if t:match("&%s*$") or M.is_value_type(t, nested) then
     return t
@@ -144,12 +144,12 @@ function M.param_type(t, nested)
 end
 
 --- "const QString &" + "name" → "const QString &name"; "int" + "x" → "int x"
---- "QWidget*" → "QWidget *" (Qt-Stil, Zeiger/Referenz am Namen)
+--- "QWidget*" → "QWidget *" (Qt style, pointer/reference next to the name)
 function M.spaced(t)
   return (t:gsub("([^%s%*&])([%*&]+)$", "%1 %2"))
 end
 
---- Ist die Membervariable selbst konstant (kein Setter möglich)?
+--- Is the member variable itself constant (no setter possible)?
 function M.is_const_object(t)
   t = vim.trim(t)
   if t:match("%f[%w_]const$") then

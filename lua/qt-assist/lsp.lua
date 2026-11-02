@@ -1,6 +1,6 @@
--- Kleiner In-Process-Language-Server, der nur Code-Actions liefert. Dadurch
--- erscheinen die Aktionen in vim.lsp.buf.code_action() (und in Pickern wie
--- telescope/fzf-lua/actions-preview) direkt neben denen von clangd.
+-- Small in-process language server that only provides code actions. This makes
+-- the actions appear in vim.lsp.buf.code_action() (and in pickers like
+-- telescope/fzf-lua/actions-preview) directly next to clangd's.
 local config = require("qt-assist.config")
 
 local M = {}
@@ -22,7 +22,7 @@ local function code_actions(params)
   end
   local r = params.range
   local l1, l2 = r.start.line, r["end"].line
-  -- Bereichsende in Spalte 0 gehört nicht mehr dazu (Visual-Line-Auswahl)
+  -- A range end in column 0 is no longer part of it (visual line selection)
   if l2 > l1 and r["end"].character == 0 then
     l2 = l2 - 1
   end
@@ -43,7 +43,7 @@ local function execute(params)
   local id = params.arguments and params.arguments[1]
   local a = pending[id]
   if not a then
-    vim.notify("qt-assist: Aktion nicht mehr gültig – bitte erneut aufrufen", vim.log.levels.WARN)
+    vim.notify("qt-assist: action no longer valid – please invoke again", vim.log.levels.WARN)
     return
   end
   local ok, err = pcall(a.run)
@@ -52,7 +52,7 @@ local function execute(params)
   end
 end
 
---- cmd-Funktion für vim.lsp.start
+--- cmd function for vim.lsp.start
 local function server(dispatchers)
   local closing = false
   local srv = {}
@@ -116,7 +116,7 @@ local function server(dispatchers)
   return srv
 end
 
---- Client-seitiger Befehl (wird bevorzugt vor workspace/executeCommand)
+--- Client-side command (preferred over workspace/executeCommand)
 vim.lsp.commands[COMMAND] = function(command)
   execute({ arguments = command.arguments })
 end
@@ -127,7 +127,7 @@ local function root_dir(buf)
     or vim.fs.dirname(name)
 end
 
---- Server an einen Buffer hängen
+--- Attach the server to a buffer
 function M.attach(buf)
   buf = buf or vim.api.nvim_get_current_buf()
   if vim.bo[buf].buftype ~= "" or vim.api.nvim_buf_get_name(buf) == "" then
@@ -154,7 +154,7 @@ function M.setup()
       M.attach(ev.buf)
     end,
   })
-  -- bereits offene Buffer
+  -- already open buffers
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) and vim.tbl_contains(config.options.lsp.filetypes, vim.bo[buf].filetype) then
       M.attach(buf)

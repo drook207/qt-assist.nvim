@@ -1,4 +1,4 @@
--- Verfügbare Aktionen an der Cursorposition ermitteln und ausführen.
+-- Determine and run the available actions at the cursor position.
 local config = require("qt-assist.config")
 local parser = require("qt-assist.parser")
 local lexer = require("qt-assist.lexer")
@@ -16,7 +16,7 @@ local function notify(msg, level)
 end
 
 -- ---------------------------------------------------------------------------
--- Parse-Cache
+-- Parse cache
 -- ---------------------------------------------------------------------------
 
 local buf_cache = {} -- buf → { tick, parsed }
@@ -33,7 +33,7 @@ function M.parse_buf(buf)
   return p
 end
 
---- Datei parsen (Buffer bevorzugt)
+--- Parse a file (buffer preferred)
 function M.parse_path(path)
   local buf = vim.fn.bufnr(path)
   if buf ~= -1 and vim.api.nvim_buf_is_loaded(buf) then
@@ -71,7 +71,7 @@ function M.clear_cache()
 end
 
 -- ---------------------------------------------------------------------------
--- Hilfsfunktionen
+-- Helpers
 -- ---------------------------------------------------------------------------
 
 local function class_function_names(cls)
@@ -105,7 +105,7 @@ local function class_functions(cls)
   return res
 end
 
---- Deklarationen vor/nach d in der Klasse (nächste zuerst)
+--- Declarations before/after d in the class (nearest first)
 local function neighbours(cls, d)
   local fns = class_functions(cls)
   local idx
@@ -155,7 +155,7 @@ local function short(path)
 end
 
 -- ---------------------------------------------------------------------------
--- Ziel für Definitionen auflösen (asynchron, ggf. mit Rückfrage)
+-- Resolve target for definitions (asynchronous, possibly with a prompt)
 -- ---------------------------------------------------------------------------
 
 ---@param ctx table
@@ -176,14 +176,14 @@ local function resolve_target(ctx, cb)
     cb({ kind = "source", path = proposal, new = true })
   elseif mode == "ask" then
     vim.ui.select({ "create", "header", "custom" }, {
-      prompt = "Keine Quelldatei zu " .. short(ctx.path) .. " gefunden",
+      prompt = "No source file found for " .. short(ctx.path),
       format_item = function(item)
         if item == "create" then
-          return "Anlegen: " .. vim.fn.fnamemodify(proposal, ":~:.")
+          return "Create: " .. vim.fn.fnamemodify(proposal, ":~:.")
         elseif item == "header" then
-          return "Im Header definieren (inline)"
+          return "Define in the header (inline)"
         end
-        return "Anderen Pfad angeben …"
+        return "Specify another path …"
       end,
     }, function(choice)
       if choice == "create" then
@@ -191,7 +191,7 @@ local function resolve_target(ctx, cb)
       elseif choice == "header" then
         cb({ kind = "header" })
       elseif choice == "custom" then
-        vim.ui.input({ prompt = "Quelldatei: ", default = proposal, completion = "file" }, function(input)
+        vim.ui.input({ prompt = "Source file: ", default = proposal, completion = "file" }, function(input)
           if input and input ~= "" then
             local p = vim.fs.normalize(vim.fn.fnamemodify(input, ":p"))
             source_cache[ctx.path] = { time = uv.now(), path = p }
@@ -205,7 +205,7 @@ local function resolve_target(ctx, cb)
   end
 end
 
---- Batch + Inserter für eine Klasse vorbereiten
+--- Prepare batch + inserter for a class
 local function open_target(ctx, target, batch)
   if target.kind == "same" then
     return codegen.source_inserter(ctx.p, ctx.buf, batch), ctx.buf
@@ -219,7 +219,7 @@ end
 
 local function finish(ctx, batch, action, sbuf)
   if batch:empty() then
-    notify("nichts zu tun")
+    notify("nothing to do")
     return
   end
   local first = batch:apply()
@@ -230,7 +230,7 @@ local function finish(ctx, batch, action, sbuf)
   end
   if sbuf and sbuf ~= ctx.buf then
     notify(action .. " → " .. short(vim.api.nvim_buf_get_name(sbuf)) ..
-      (config.options.auto_save and "" or " (nicht gespeichert)"))
+      (config.options.auto_save and "" or " (not saved)"))
   end
   if type(config.options.on_generated) == "function" then
     pcall(config.options.on_generated, { header = ctx.buf, source = sbuf, action = action })
@@ -238,10 +238,10 @@ local function finish(ctx, batch, action, sbuf)
 end
 
 -- ---------------------------------------------------------------------------
--- Getter / Setter / Signal / Q_PROPERTY
+-- Getter / setter / signal / Q_PROPERTY
 -- ---------------------------------------------------------------------------
 
---- Plan für eine Membervariable bzw. Property
+--- Plan for a member variable or property
 ---@param ctx table
 ---@param spec table { member=, type=, base=, static=, want = {getter,setter,signal,reset,property,member_var}, names = {getter=,...} }
 local function member_plan(ctx, spec)
@@ -260,17 +260,17 @@ local function member_plan(ctx, spec)
   plan.reset = w.reset and not existing[n.reset] and not spec.static
   plan.property = w.property and not props[n.name] and not spec.static and w.property or nil
   plan.member_var = w.member_var
-  -- Signal vorhanden (für emit im Setter)?
+  -- Signal present (for emit in the setter)?
   plan.has_signal = not spec.static and (plan.signal or (existing[n.signal] ~= nil and (w.signal or w.property)))
   plan.any = plan.getter or plan.setter or plan.signal or plan.reset or plan.property or plan.member_var
-  -- Konstante Member: keine Varianten anbieten, die einen Setter versprechen
+  -- Constant member: do not offer variants that promise a setter
   if w.setter and naming.is_const_object(spec.type) then
     plan.any = false
   end
   return plan
 end
 
---- Alle Pläne ausführen
+--- Run all plans
 local function run_member_plans(ctx, plans, action)
   local cls = ctx.cls
   local need_defs = false
@@ -299,8 +299,8 @@ local function run_member_plans(ctx, plans, action)
     local unit = ci.unit
     local chain, tpls = codegen.class_qualifier(cls)
     local chain_str = table.concat(chain, "::") .. "::"
-    -- Neue Funktionen landen am Ende des public-Abschnitts: Nachbarn sind die
-    -- davor deklarierten Funktionen (nächste zuerst)
+    -- New functions go at the end of the public section: the neighbours are
+    -- the functions declared before them (nearest first)
     local prev = {}
     local pub_sec = ci:find_section({ access = "public", kind = "normal" })
     local bound = pub_sec and (pub_sec.last_line or pub_sec.line) or math.huge
@@ -316,10 +316,10 @@ local function run_member_plans(ctx, plans, action)
       end
     end
 
-    --- Funktion platzieren: Deklaration in die Klasse, Rumpf je nach Modus
+    --- Place a function: declaration in the class, body depending on the mode
     local function place(sec_spec, decl, sig_tail, ret, body, inline_getter)
-      -- decl: vollständige Deklaration ohne ";"
-      -- sig_tail: Name + Parameter + Qualifizierer, z. B. "foo() const"
+      -- decl: complete declaration without ";"
+      -- sig_tail: name + parameters + qualifiers, e.g. "foo() const"
       if where == "inline" or inline_getter then
         local lines = codegen.function_lines(decl, body, ci.member_indent, unit)
         ci:add(sec_spec, lines)
@@ -328,7 +328,7 @@ local function run_member_plans(ctx, plans, action)
       ci:add_decl(sec_spec, decl .. ";")
       local function make(q)
         local r = ret
-        -- verschachtelte Typen qualifizieren
+        -- qualify nested types
         r = r:gsub("()([%a_][%w_]*)", function(pos, word)
           if cls.nested_types[word] and not r:sub(1, pos - 1):match("::%s*$") then
             return q:gsub("::$", "") .. "::" .. word
@@ -341,7 +341,7 @@ local function run_member_plans(ctx, plans, action)
         if #tpls == 0 then
           lines[1] = "inline " .. lines[1]
         else
-          -- Template: "inline" nach den template-Zeilen
+          -- Template: "inline" after the template lines
           lines[#tpls + 1] = "inline " .. lines[#tpls + 1]
         end
         ci:add_after_class(lines)
@@ -399,7 +399,7 @@ local function run_member_plans(ctx, plans, action)
               body[#body + 1] = naming.expand(l, vars)
             end
           end
-          -- Vergleich nicht mit std::move
+          -- Do not compare with std::move
           if is_move_type(typ) then
             body[1] = body[1]:gsub("std::move%((.-)%)", "%1")
           end
@@ -444,20 +444,20 @@ local function run_member_plans(ctx, plans, action)
 end
 
 local member_variants = {
-  { id = "getset", title = "Getter und Setter", want = { getter = true, setter = true } },
+  { id = "getset", title = "Getter and setter", want = { getter = true, setter = true } },
   { id = "getter", title = "Getter", want = { getter = true } },
   { id = "setter", title = "Setter", want = { setter = true } },
-  { id = "getsetsig", title = "Getter, Setter und Changed-Signal", want = { getter = true, setter = true, signal = true } },
-  { id = "property", title = "Q_PROPERTY und fehlende Member", want = { getter = true, setter = true, signal = true, property = "full" } },
-  { id = "property_reset", title = "Q_PROPERTY mit Reset und fehlende Member", want = { getter = true, setter = true, signal = true, reset = true, property = "reset" } },
-  { id = "property_const", title = "konstante Q_PROPERTY und Getter", want = { getter = true, property = "constant" } },
+  { id = "getsetsig", title = "Getter, setter and changed signal", want = { getter = true, setter = true, signal = true } },
+  { id = "property", title = "Q_PROPERTY and missing members", want = { getter = true, setter = true, signal = true, property = "full" } },
+  { id = "property_reset", title = "Q_PROPERTY with reset and missing members", want = { getter = true, setter = true, signal = true, reset = true, property = "reset" } },
+  { id = "property_const", title = "Constant Q_PROPERTY and getter", want = { getter = true, property = "constant" } },
 }
 
 -- ---------------------------------------------------------------------------
--- Definitionen
+-- Definitions
 -- ---------------------------------------------------------------------------
 
---- Definitionen für Deklarationen erzeugen
+--- Generate definitions for declarations
 ---@param where string "source" | "inline" | "outside"
 local function add_definitions(ctx, decls, where, action)
   local cls = ctx.cls
@@ -484,14 +484,14 @@ local function add_definitions(ctx, decls, where, action)
     end
     local body = config.options.empty_body or {}
     for _, d in ipairs(decls) do
-      -- Member-Templates gehören in den Header
+      -- Member templates belong in the header
       local where = (where == "source" and d.template) and "outside" or where
       local prefix = vim.deepcopy(tpls)
       if d.template then
         prefix[#prefix + 1] = d.template:gsub("%s*=[^,>]*", "")
       end
       if where == "inline" then
-        -- ";" durch Rumpf ersetzen
+        -- Replace ";" with a body
         local semi = ctx.p.toks[d.last_tok]
         local indent = ctx.p.lines[d.start_line + 1]:match("^(%s*)")
         local lines
@@ -541,19 +541,19 @@ local function add_definitions(ctx, decls, where, action)
   end
 end
 
---- Inline-Definition aus der Klasse in die Quelldatei verschieben
+--- Move an inline definition from the class into the source file
 local function move_definition(ctx, d, action)
   local cls = ctx.cls
   resolve_target(ctx, function(target)
     if target.kind == "header" then
-      notify("keine Quelldatei – Verschieben abgebrochen", vim.log.levels.WARN)
+      notify("no source file – move cancelled", vim.log.levels.WARN)
       return
     end
     local p, toks = ctx.p, ctx.p.toks
     local batch = edits.batch()
     local si, sbuf = open_target(ctx, target, batch)
     local unit = edits.indent_unit(ctx.buf, p.lines)
-    -- Initialisierungsliste?
+    -- Initializer list?
     local init_tok
     for k = d.paren_close + 1, d.body_open - 1 do
       if toks[k].s == ":" then
@@ -563,13 +563,13 @@ local function move_definition(ctx, d, action)
     end
     local head_end = (init_tok or d.body_open) - 1
     local he, bc = toks[head_end], toks[d.body_close]
-    -- Header: Rumpf durch ";" ersetzen (inkl. ";" nach der Definition)
+    -- Header: replace the body with ";" (including the ";" after the definition)
     local end_tok = bc
     if toks[d.body_close + 1] and toks[d.body_close + 1].s == ";" and toks[d.body_close + 1].l == bc.l then
       end_tok = toks[d.body_close + 1]
     end
     batch:replace(ctx.buf, he.l, he.ec, end_tok.el, end_tok.ec, { ";" })
-    -- "inline" entfernen
+    -- Remove "inline"
     for k = d.first_tok, d.name_tok do
       if toks[k].s == "inline" then
         local t = toks[k]
@@ -581,7 +581,7 @@ local function move_definition(ctx, d, action)
         batch:replace(ctx.buf, t.l, t.c, t.el, ec, { "" })
       end
     end
-    -- Rumpf übernehmen
+    -- Take over the body
     local bo = toks[d.body_open]
     local body = {}
     if bo.l == bc.l then
@@ -602,7 +602,7 @@ local function move_definition(ctx, d, action)
       if last_inner ~= "" then
         inner[#inner + 1] = p.lines[bc.l + 1]:sub(1, bc.c)
       end
-      -- gemeinsame Einrückung entfernen
+      -- remove the common indentation
       local min
       for _, l in ipairs(inner) do
         if l:match("%S") then
@@ -633,12 +633,12 @@ local function move_definition(ctx, d, action)
   end)
 end
 
---- Deklaration für eine Definition in der .cpp im Header ergänzen
+--- Add a declaration for a definition from the .cpp to the header
 local function add_declaration(ctx, f, hpath, hcls, spec, action)
   local batch = edits.batch()
   local hbuf = edits.load(hpath)
   local hp = parser.parse(edits.lines(hbuf))
-  -- Klasse im frisch geparsten Header wiederfinden
+  -- Find the class again in the freshly parsed header
   local target
   for _, c in ipairs(hp.classes) do
     if table.concat(codegen.class_path(c), "::") == table.concat(codegen.class_path(hcls), "::") then
@@ -666,7 +666,7 @@ local function add_declaration(ctx, f, hpath, hcls, spec, action)
 end
 
 -- ---------------------------------------------------------------------------
--- Aktionen sammeln
+-- Collect actions
 -- ---------------------------------------------------------------------------
 
 ---@class QtAssistAction
@@ -674,10 +674,10 @@ end
 ---@field kind string
 ---@field run fun()
 
---- Kontext an Cursor/Bereich
+--- Context at the cursor/range
 ---@param buf integer
----@param l1 integer 0-basiert
----@param l2 integer 0-basiert
+---@param l1 integer 0-based
+---@param l2 integer 0-based
 function M.context(buf, l1, l2)
   local path = vim.fs.normalize(vim.api.nvim_buf_get_name(buf))
   local p = M.parse_buf(buf)
@@ -692,14 +692,14 @@ function M.context(buf, l1, l2)
   return ctx
 end
 
---- Alle Aktionen für Buffer und Zeilenbereich
+--- All actions for a buffer and line range
 ---@return QtAssistAction[]
 function M.collect(buf, l1, l2)
   l2 = l2 or l1
   local ok, res = pcall(M._collect, buf, l1, l2)
   if not ok then
     if vim.g.qt_assist_debug then
-      notify("Fehler: " .. tostring(res), vim.log.levels.ERROR)
+      notify("Error: " .. tostring(res), vim.log.levels.ERROR)
     end
     return {}
   end
@@ -729,9 +729,9 @@ function M._collect(buf, l1, l2)
       end
     end
 
-    -- Membervariablen
+    -- Member variables
     if #vars > 0 then
-      local label = #vars == 1 and vars[1].name or (#vars .. " Member")
+      local label = #vars == 1 and vars[1].name or (#vars .. " members")
       for _, v in ipairs(member_variants) do
         local plans = {}
         for _, var in ipairs(vars) do
@@ -744,7 +744,7 @@ function M._collect(buf, l1, l2)
           end
         end
         if #plans > 0 then
-          local title = v.title .. " für " .. label .. " erzeugen"
+          local title = v.title .. " for " .. label
           add(title, function()
             run_member_plans(ctx, plans, title)
           end)
@@ -752,7 +752,7 @@ function M._collect(buf, l1, l2)
       end
     end
 
-    -- Q_PROPERTY → fehlende Member
+    -- Q_PROPERTY → missing members
     local props = parser.properties_in(cls, l1, l2)
     if #props > 0 and #members == 0 then
       local plans = {}
@@ -785,14 +785,14 @@ function M._collect(buf, l1, l2)
         end
       end
       if #plans > 0 then
-        local title = "Fehlende Member für Q_PROPERTY erzeugen"
+        local title = "Generate missing members for Q_PROPERTY"
         add(title, function()
           run_member_plans(ctx, plans, title)
         end)
       end
     end
 
-    -- Funktionsdeklarationen
+    -- Function declarations
     local sp_index, target_name
     local function source_index()
       if sp_index ~= nil then
@@ -809,7 +809,7 @@ function M._collect(buf, l1, l2)
         else
           sp_index = false
           if config.options.source.create_missing ~= false then
-            target_name = short(source.default_source_path(ctx.path)) .. " (neu)"
+            target_name = short(source.default_source_path(ctx.path)) .. " (new)"
           end
         end
       end
@@ -824,34 +824,34 @@ function M._collect(buf, l1, l2)
     end
     local tmpl = codegen.is_template_class(cls)
     if #undefined > 0 then
-      local label = #undefined == 1 and (undefined[1].name .. "()") or (#undefined .. " Funktionen")
+      local label = #undefined == 1 and (undefined[1].name .. "()") or (#undefined .. " functions")
       if not tmpl then
-        local tname = target_name or (source.default_source_path(ctx.path) and "Quelldatei")
-        add("Definition für " .. label .. " in " .. tname .. " erzeugen", function()
-          add_definitions(ctx, undefined, "source", "Definition erzeugt")
+        local tname = target_name or (source.default_source_path(ctx.path) and "source file")
+        add("Generate definition for " .. label .. " in " .. tname, function()
+          add_definitions(ctx, undefined, "source", "Definition created")
         end)
       end
-      add("Definition für " .. label .. " außerhalb der Klasse erzeugen", function()
-        add_definitions(ctx, undefined, "outside", "Definition erzeugt")
+      add("Generate definition for " .. label .. " outside the class", function()
+        add_definitions(ctx, undefined, "outside", "Definition created")
       end)
       if #undefined == 1 then
-        add("Definition für " .. label .. " in der Klasse erzeugen", function()
-          add_definitions(ctx, undefined, "inline", "Definition erzeugt")
+        add("Generate definition for " .. label .. " in the class", function()
+          add_definitions(ctx, undefined, "inline", "Definition created")
         end)
       end
     end
 
-    -- Inline-Definitionen verschieben
+    -- Move inline definitions
     if #inline_defs == 1 and not tmpl and not ctx.is_source then
       local d = inline_defs[1]
       source_index()
-      local tname = target_name or "Quelldatei"
-      add("Definition von " .. d.name .. "() nach " .. tname .. " verschieben", function()
-        move_definition(ctx, d, "Definition verschoben")
+      local tname = target_name or "source file"
+      add("Move definition of " .. d.name .. "() to " .. tname, function()
+        move_definition(ctx, d, "Definition moved")
       end)
     end
 
-    -- Alle fehlenden Definitionen der Klasse
+    -- All missing definitions of the class
     local all = {}
     for _, m in ipairs(cls.members) do
       if m.kind == "function" and codegen.needs_definition(m)
@@ -860,13 +860,13 @@ function M._collect(buf, l1, l2)
       end
     end
     if #all > 0 and (#all ~= #undefined or #undefined > 1) and not tmpl then
-      add(("Alle fehlenden Definitionen von %s in %s erzeugen (%d)"):format(cls.name, target_name or "Quelldatei", #all), function()
-        add_definitions(ctx, all, "source", "Definitionen erzeugt")
+      add(("Generate all missing definitions of %s in %s (%d)"):format(cls.name, target_name or "source file", #all), function()
+        add_definitions(ctx, all, "source", "Definitions created")
       end)
     end
   end
 
-  -- Definition in der .cpp ohne Deklaration → Deklaration im Header
+  -- Definition in the .cpp without declaration → declaration in the header
   if ctx.is_source then
     local f = parser.function_at(ctx.p, l1)
     if f and not f.class and f.has_body and #f.qualifier > 0 and l1 <= (f.body_open and ctx.p.toks[f.body_open].l or f.start_line) then
@@ -877,7 +877,7 @@ function M._collect(buf, l1, l2)
       for _, path in ipairs(codegen.def_class_paths(sp, f)) do
         paths[table.concat(path, "::")] = true
       end
-      -- Klassen aus Header und aus der Quelldatei selbst
+      -- Classes from the header and from the source file itself
       local function scan(parsed, file)
         for _, c in ipairs(parsed.classes) do
           if paths[table.concat(codegen.class_path(c), "::")] then
@@ -900,14 +900,14 @@ function M._collect(buf, l1, l2)
         end
         if not declared then
           for _, variant in ipairs({
-            { "Öffentliche Deklaration", { access = "public", kind = "normal" } },
-            { "Geschützte Deklaration", { access = "protected", kind = "normal" } },
-            { "Private Deklaration", { access = "private", kind = "normal" } },
-            { "Deklaration als public slot", { access = "public", kind = "slots" } },
+            { "public declaration", { access = "public", kind = "normal" } },
+            { "protected declaration", { access = "protected", kind = "normal" } },
+            { "private declaration", { access = "private", kind = "normal" } },
+            { "declaration as public slot", { access = "public", kind = "slots" } },
           }) do
-            local title = ("%s für %s() in %s erzeugen"):format(variant[1], f.name, short(c.path))
+            local title = ("Generate %s for %s() in %s"):format(variant[1], f.name, short(c.path))
             add(title, function()
-              add_declaration(ctx, f, c.path, c.cls, variant[2], "Deklaration erzeugt")
+              add_declaration(ctx, f, c.path, c.cls, variant[2], "Declaration created")
             end)
           end
         end

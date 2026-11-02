@@ -1,4 +1,4 @@
--- Text-Erzeugung und Einfügepunkte in Header (Klasse) und Quelldatei.
+-- Text generation and insertion points in the header (class) and source file.
 local config = require("qt-assist.config")
 local parser = require("qt-assist.parser")
 local lexer = require("qt-assist.lexer")
@@ -24,7 +24,7 @@ local function strip_templates(s)
   return vim.trim(s)
 end
 
---- Pfad (Namespaces + Klassenkette) einer Klasse
+--- Path (namespaces + class chain) of a class
 function M.class_path(cls)
   local path = {}
   for _, n in ipairs(cls.ns) do
@@ -36,7 +36,7 @@ function M.class_path(cls)
   return path
 end
 
---- Template-Parameternamen aus "template <typename T, int N = 3>" → "T, N"
+--- Template parameter names from "template <typename T, int N = 3>" → "T, N"
 local function template_args(tpl)
   local inner = tpl:match("<(.*)>")
   if not inner then
@@ -70,7 +70,7 @@ local function template_args(tpl)
   return table.concat(names, ", ")
 end
 
---- Template-Präfix ohne Default-Argumente
+--- Template prefix without default arguments
 local function template_decl(tpl)
   local inner = tpl:match("<(.*)>") or ""
   local parts, depth, cur = {}, 0, ""
@@ -94,7 +94,7 @@ local function template_decl(tpl)
   return "template <" .. table.concat(parts, ", ") .. ">"
 end
 
---- Ist die Klasse (oder eine äußere) ein Template?
+--- Is the class (or an outer one) a template?
 function M.is_template_class(cls)
   local c = cls
   while c do
@@ -106,8 +106,8 @@ function M.is_template_class(cls)
   return false
 end
 
---- Qualifizierer der Klasse für Out-of-Class-Definitionen ("Outer::Inner<T>::")
---- und die nötigen template-Zeilen
+--- Class qualifier for out-of-class definitions ("Outer::Inner<T>::")
+--- and the required template lines
 function M.class_qualifier(cls)
   local chain, tpls = {}, {}
   local list = {}
@@ -127,7 +127,7 @@ function M.class_qualifier(cls)
   return chain, tpls
 end
 
---- Verschachtelte Typen der Klasse im Rückgabetyp qualifizieren
+--- Qualify nested types of the class in the return type
 local function qualify_nested(ret, cls, chain_str)
   if not cls or ret == "" then
     return ret
@@ -144,7 +144,7 @@ local function qualify_nested(ret, cls, chain_str)
   return out
 end
 
---- "T" + "name" ohne doppelte Leerzeichen
+--- "T" + "name" without duplicate spaces
 local function join_ret(ret, rest)
   if ret == "" then
     return rest
@@ -156,7 +156,7 @@ local function join_ret(ret, rest)
   return ret .. " " .. rest
 end
 
---- Parameterliste ohne Default-Argumente
+--- Parameter list without default arguments
 function M.params_without_defaults(d)
   local out = {}
   for _, prm in ipairs(d.params) do
@@ -165,10 +165,10 @@ function M.params_without_defaults(d)
   return table.concat(out, ", ")
 end
 
---- Signatur einer Out-of-Class-Definition
----@param d table Funktionsdeklaration aus dem Parser
----@param cls table Klasse
----@param qualifier string z. B. "Person::" oder "app::model::Person::"
+--- Signature of an out-of-class definition
+---@param d table Function declaration from the parser
+---@param cls table Class
+---@param qualifier string e.g. "Person::" or "app::model::Person::"
 function M.definition_signature(d, cls, qualifier)
   local chain = M.class_qualifier(cls)
   local ret = d.ret or ""
@@ -187,11 +187,11 @@ function M.definition_signature(d, cls, qualifier)
   return sig
 end
 
---- Funktion als Zeilen (Signatur + Rumpf)
+--- Function as lines (signature + body)
 ---@param sig string
----@param body string[] Rumpfzeilen ohne Einrückung (eine Ebene wird ergänzt)
----@param base string Basiseinrückung
----@param unit string Einrückungseinheit
+---@param body string[] Body lines without indentation (one level is added)
+---@param base string Base indentation
+---@param unit string Indentation unit
 function M.function_lines(sig, body, base, unit, prefix_lines)
   local out = {}
   for _, l in ipairs(prefix_lines or {}) do
@@ -215,14 +215,14 @@ function M.function_lines(sig, body, base, unit, prefix_lines)
 end
 
 -- ---------------------------------------------------------------------------
--- Einfügen in die Klasse (Header)
+-- Inserting into the class (header)
 -- ---------------------------------------------------------------------------
 
 local ClassInserter = {}
 ClassInserter.__index = ClassInserter
 
----@param p table Parse-Ergebnis
----@param cls table Klasse
+---@param p table Parse result
+---@param cls table Class
 ---@param buf integer
 ---@param batch table
 function M.class_inserter(p, cls, buf, batch)
@@ -230,7 +230,7 @@ function M.class_inserter(p, cls, buf, batch)
   self.unit = edits.indent_unit(buf, p.lines)
   local class_indent = leading_ws(p.lines[cls.start_line + 1])
   self.class_indent = class_indent
-  -- Einrückung der Member: erster Member/Makro, der am Zeilenanfang steht
+  -- Indentation of the members: first member/macro that starts at the beginning of a line
   local member_indent
   local cands = {}
   for _, m in ipairs(cls.members) do
@@ -256,7 +256,7 @@ function M.class_inserter(p, cls, buf, batch)
   return self
 end
 
---- Passenden vorhandenen Abschnitt suchen
+--- Find a matching existing section
 ---@param spec table {access=, kind=}
 function ClassInserter:find_section(spec)
   local found
@@ -272,7 +272,7 @@ local function spec_key(spec)
   return spec.kind .. ":" .. (spec.access or "")
 end
 
---- Zeilen (bereits eingerückt) einem Abschnitt hinzufügen
+--- Add lines (already indented) to a section
 function ClassInserter:add(spec, lines)
   local key = spec_key(spec)
   local g = self.groups[key]
@@ -284,12 +284,12 @@ function ClassInserter:add(spec, lines)
   g.items[#g.items + 1] = lines
 end
 
---- Einfache Deklaration (eine Zeile) mit Member-Einrückung
+--- Simple declaration (one line) with member indentation
 function ClassInserter:add_decl(spec, text)
   self:add(spec, { self.member_indent .. text })
 end
 
---- Zeilen hinter der Klasse (z. B. Inline-Definitionen) einfügen
+--- Insert lines after the class (e.g. inline definitions)
 function ClassInserter:add_after_class(lines)
   self.after[#self.after + 1] = lines
 end
@@ -303,7 +303,7 @@ function ClassInserter:label(spec)
   return self.label_indent .. spec.access .. ":"
 end
 
---- Q_PROPERTY einfügen
+--- Insert Q_PROPERTY
 function ClassInserter:add_property(text)
   self.props = self.props or {}
   self.props[#self.props + 1] = self.member_indent .. text
@@ -317,7 +317,7 @@ end
 
 function ClassInserter:finish()
   local cls, p, b, buf = self.cls, self.p, self.batch, self.buf
-  -- Q_OBJECT ergänzen
+  -- Add Q_OBJECT
   if self.need_qobject then
     b:insert_lines(buf, cls.open_line + 1, { self.member_indent .. self.need_qobject })
   end
@@ -339,7 +339,7 @@ function ClassInserter:finish()
       b:insert_lines(buf, row, self.props)
     end
   end
-  -- Abschnitte
+  -- Sections
   local close_line = cls.close_line
   local close_tok = p.toks[cls.close]
   local brace_first = vim.trim(p.lines[close_line + 1]:sub(1, close_tok.c)) == ""
@@ -364,7 +364,7 @@ function ClassInserter:finish()
       b:insert_lines(buf, (cls.implicit_last or cls.open_line) + 1, lines)
     else
       local block = {}
-      local prev = p.lines[close_line] -- Zeile vor der schließenden Klammer
+      local prev = p.lines[close_line] -- line before the closing brace
       if not is_blank(prev) and close_line - 1 > cls.open_line then
         block[#block + 1] = ""
       end
@@ -390,14 +390,14 @@ function ClassInserter:finish()
 end
 
 -- ---------------------------------------------------------------------------
--- Quelldatei: Index der vorhandenen Definitionen
+-- Source file: index of existing definitions
 -- ---------------------------------------------------------------------------
 
 local function path_key(path)
   return table.concat(path, "::")
 end
 
---- Ermittelt für eine Out-of-Class-Definition die möglichen Klassenpfade
+--- Determine the possible class paths for an out-of-class definition
 local function def_class_paths(sp, f)
   local q = {}
   for _, part in ipairs(f.qualifier) do
@@ -410,7 +410,7 @@ local function def_class_paths(sp, f)
   local base = vim.deepcopy(f.ns)
   vim.list_extend(base, q)
   res[#res + 1] = base
-  -- using namespace auf Dateiebene oder im umgebenden Namespace
+  -- using namespace at file level or in the surrounding namespace
   local usings = vim.deepcopy(sp.usings)
   local s = f.scope
   while s do
@@ -424,7 +424,7 @@ local function def_class_paths(sp, f)
     vim.list_extend(path, q)
     res[#res + 1] = path
   end
-  -- Qualifizierer relativ zu einem äußeren Namespace (namespace a { b::C::f() })
+  -- Qualifier relative to an outer namespace (namespace a { b::C::f() })
   for i = #f.ns - 1, 0, -1 do
     local path = vim.list_slice(f.ns, 1, i)
     vim.list_extend(path, q)
@@ -435,7 +435,7 @@ end
 
 M.def_class_paths = def_class_paths
 
---- Signaturschlüssel, Klassen-Qualifizierer in Parametertypen entfernt
+--- Signature key with class qualifiers removed from parameter types
 local function sig_key(f, class_names)
   local types = {}
   for _, prm in ipairs(f.params) do
@@ -449,7 +449,7 @@ local function sig_key(f, class_names)
 end
 M.sig_key = sig_key
 
---- Index: Klassenpfad → Liste von Definitionen
+--- Index: class path → list of definitions
 function M.source_index(sp)
   local idx = {}
   for _, f in ipairs(sp.functions) do
@@ -464,7 +464,7 @@ function M.source_index(sp)
   return idx
 end
 
---- Definition einer Deklaration in der Quelle suchen
+--- Find the definition of a declaration in the source
 function M.find_definition(index, cls, d)
   local list = index[path_key(M.class_path(cls))]
   if not list then
@@ -476,7 +476,7 @@ function M.find_definition(index, cls, d)
       return f
     end
   end
-  -- Nur über Name und Parameteranzahl (z. B. abweichende Typ-Schreibweise)
+  -- Only by name and parameter count (e.g. differing type spelling)
   local cands = {}
   for _, f in ipairs(list) do
     if f.name == d.name and #f.params == #d.params and f.is_const == d.is_const then
@@ -488,7 +488,7 @@ function M.find_definition(index, cls, d)
   end
 end
 
---- Ist eine Funktionsdeklaration irgendwo definiert (inline, Header, Quelle)?
+--- Is a function declaration defined anywhere (inline, header, source)?
 function M.is_defined(d, cls, header_index, source_index)
   if d.has_body or d.pure or d.defaulted or d.deleted then
     return true
@@ -502,7 +502,7 @@ function M.is_defined(d, cls, header_index, source_index)
   return false
 end
 
---- Funktionen, für die eine Definition erzeugt werden kann
+--- Functions for which a definition can be generated
 function M.needs_definition(d)
   if d.kind ~= "function" or d.has_body or d.pure or d.defaulted or d.deleted then
     return false
@@ -517,16 +517,16 @@ function M.needs_definition(d)
 end
 
 -- ---------------------------------------------------------------------------
--- Einfügen in die Quelldatei
+-- Inserting into the source file
 -- ---------------------------------------------------------------------------
 
 local SourceInserter = {}
 SourceInserter.__index = SourceInserter
 
----@param sp table Parse-Ergebnis der Quelle
+---@param sp table Parse result of the source
 ---@param buf integer
 ---@param batch table
----@param header_path string|nil für #include in neuen Dateien
+---@param header_path string|nil for #include in new files
 function M.source_inserter(sp, buf, batch, opts)
   opts = opts or {}
   local self = setmetatable({
@@ -537,7 +537,7 @@ function M.source_inserter(sp, buf, batch, opts)
   return self
 end
 
---- Einfügepunkt-Gruppe (gleiche Zeile) holen
+--- Get an insertion point group (same line)
 function SourceInserter:point(row, mode)
   local key = row .. ":" .. mode
   local pt = self.points[key]
@@ -548,7 +548,7 @@ function SourceInserter:point(row, mode)
   return pt
 end
 
---- Tiefster Namespace-Block, dessen Pfad ein Präfix von path ist
+--- Deepest namespace block whose path is a prefix of path
 function SourceInserter:deepest_block(path)
   local best, best_len = nil, 0
   for _, ns in ipairs(self.sp.namespaces) do
@@ -564,7 +564,7 @@ function SourceInserter:deepest_block(path)
       if ok then
         best, best_len = ns, #np
       elseif #np == #path then
-        -- nichts
+    -- nothing
       end
     end
   end
@@ -581,12 +581,12 @@ local function file_using_covers(sp, path)
   return false
 end
 
---- Definition hinzufügen
----@param cls table Klasse aus dem Header
----@param make fun(qualifier: string): string[] Zeilen ohne Basiseinrückung
----@param anchor_decl table|nil Deklaration im Header (für die Reihenfolge)
----@param prev_decls table[]|nil Deklarationen davor (nächste zuerst)
----@param next_decls table[]|nil Deklarationen danach
+--- Add a definition
+---@param cls table Class from the header
+---@param make fun(qualifier: string): string[] Lines without base indentation
+---@param anchor_decl table|nil Declaration in the header (for ordering)
+---@param prev_decls table[]|nil Declarations before it (nearest first)
+---@param next_decls table[]|nil Declarations after it
 function SourceInserter:add(cls, make, prev_decls, next_decls)
   local sp = self.sp
   local chain = M.class_qualifier(cls)
@@ -594,7 +594,7 @@ function SourceInserter:add(cls, make, prev_decls, next_decls)
   local list = self.index[path_key(M.class_path(cls))] or {}
 
   local function qualifier_like(f)
-    -- Schreibweise des Nachbarn übernehmen (z. B. "app::model::Person::")
+    -- Adopt the spelling of the neighbour (e.g. "app::model::Person::")
     local q = table.concat(f.qualifier, "::")
     local plain = strip_templates(q)
     local chain_plain = strip_templates(table.concat(chain, "::"))
@@ -604,7 +604,7 @@ function SourceInserter:add(cls, make, prev_decls, next_decls)
     return chain_str
   end
 
-  -- 1. Nachbar mit Definition
+  -- 1. Neighbour with a definition
   for _, d in ipairs(prev_decls or {}) do
     local f = M.find_definition(self.index, cls, d)
     if f then
@@ -621,7 +621,7 @@ function SourceInserter:add(cls, make, prev_decls, next_decls)
       return
     end
   end
-  -- 2. letzte Definition der Klasse
+  -- 2. last definition of the class
   if #list > 0 then
     local last = list[1]
     for _, f in ipairs(list) do
@@ -663,25 +663,25 @@ function SourceInserter:add(cls, make, prev_decls, next_decls)
     local pt = block and self:point(block.close_line, "close") or self:point(#sp.lines, "eof")
     pt.items[#pt.items + 1] = make(q)
   elseif mode == "using" then
-    -- using-Direktive ergänzen, Definition auf Dateiebene ans Ende
+    -- add the using directive, definition at file level at the end
     self.need_using[path_key(path)] = path
     local pt = self:point(#sp.lines, "eof")
     pt.items[#pt.items + 1] = make(chain_str)
   else
-    -- neue Namespace-Blöcke anlegen (gesammelt pro Container + Pfad)
+    -- create new namespace blocks (collected per container + path)
     local key = (block and tostring(block.open) or "file") .. "|" .. path_key(missing)
     local nb = self.new_blocks[key]
     if not nb then
       nb = { block = block, missing = missing, items = {} }
       self.new_blocks[key] = nb
       local pt = block and self:point(block.close_line, "close") or self:point(#sp.lines, "eof")
-      pt.items[#pt.items + 1] = nb -- Platzhalter, wird in finish aufgelöst
+      pt.items[#pt.items + 1] = nb -- placeholder, resolved in finish
     end
     nb.items[#nb.items + 1] = make(chain_str)
   end
 end
 
---- Namespace-Block um Zeilen legen
+--- Wrap lines in a namespace block
 local function namespace_block(missing, items)
   local o = config.options
   local open, close = {}, {}
@@ -718,7 +718,7 @@ function SourceInserter:finish()
     end
     return t
   end
-  -- Kopf neuer Dateien
+  -- Header of new files
   if is_new and self.opts.include then
     b:insert_lines(buf, 0, { '#include "' .. self.opts.include .. '"' })
   end
@@ -760,7 +760,7 @@ function SourceInserter:finish()
         vim.list_extend(out, blanks(sep))
       end
     elseif pt.mode == "close" then
-      local prev = lines[pt.row] -- Zeile vor der schließenden Klammer
+      local prev = lines[pt.row] -- line before the closing brace
       local open_line_before = false
       for _, ns in ipairs(sp.namespaces) do
         if ns.close_line == pt.row and ns.open_line == pt.row - 1 then

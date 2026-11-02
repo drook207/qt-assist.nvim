@@ -10,7 +10,7 @@ local function range_from_opts(opts)
   return l, l
 end
 
---- Aktionen an Cursor/Bereich
+--- Actions at cursor/range
 function M.actions(buf, l1, l2)
   buf = buf or vim.api.nvim_get_current_buf()
   if not l1 then
@@ -19,7 +19,7 @@ function M.actions(buf, l1, l2)
   return require("qt-assist.actions").collect(buf, l1, l2)
 end
 
---- Auswahlmenü (ohne LSP nutzbar). filter: Teilstring des Titels oder Lua-Pattern
+--- Selection menu (usable without LSP). filter: substring of the title or Lua pattern
 function M.select(opts, filter)
   local l1, l2 = range_from_opts(opts)
   local list = M.actions(nil, l1, l2)
@@ -29,7 +29,7 @@ function M.select(opts, filter)
     end, list)
   end
   if #list == 0 then
-    vim.notify("qt-assist: keine Aktionen an dieser Stelle", vim.log.levels.INFO)
+    vim.notify("qt-assist: no actions at this location", vim.log.levels.INFO)
     return
   end
   if #list == 1 and filter and filter ~= "" then
@@ -48,7 +48,7 @@ function M.select(opts, filter)
   end)
 end
 
---- Zwischen Header und Quelle wechseln
+--- Switch between header and source
 function M.switch()
   local buf = vim.api.nvim_get_current_buf()
   local source = require("qt-assist.source")
@@ -62,23 +62,23 @@ function M.switch()
   if target then
     vim.cmd.edit(vim.fn.fnameescape(target))
   else
-    vim.notify("qt-assist: kein Gegenstück gefunden", vim.log.levels.WARN)
+    vim.notify("qt-assist: no counterpart found", vim.log.levels.WARN)
   end
 end
 
 local shortcuts = {
-  getset = "getter und setter",
-  getter = "getter für",
-  setter = "setter für",
-  signal = "changed-signal",
-  property = "q_property und fehlende",
-  property_reset = "q_property mit reset",
-  property_const = "konstante q_property",
-  property_members = "fehlende member für q_property",
-  define = "definition für",
-  define_all = "alle fehlenden definitionen",
-  move = "verschieben",
-  declare = "öffentliche deklaration",
+  getset = "getter and setter",
+  getter = "getter for",
+  setter = "setter for",
+  signal = "changed signal",
+  property = "q_property and missing",
+  property_reset = "q_property with reset",
+  property_const = "constant q_property",
+  property_members = "missing members for q_property",
+  define = "definition for",
+  define_all = "all missing definitions",
+  move = "move definition",
+  declare = "public declaration",
 }
 M.shortcuts = shortcuts
 
